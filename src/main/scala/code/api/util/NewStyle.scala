@@ -1,7 +1,7 @@
 package code.api.util
 
 import code.api.APIFailureNewStyle
-import code.api.util.APIUtil.{createHttpParamsByUrlFuture, createQueriesByHttpParamsFuture, fullBoxOrException, hasEntitlement, unboxFull, unboxFullOrFail}
+import code.api.util.APIUtil.{createHttpParamsByUrlFuture, createQueriesByHttpParamsFuture, fullBoxOrException, unboxFull, unboxFullOrFail}
 import code.api.util.ErrorMessages._
 import code.api.v2_0_0.OBPAPI2_0_0.Implementations2_0_0
 import code.api.v2_1_0.OBPAPI2_1_0.Implementations2_1_0
@@ -11,13 +11,11 @@ import code.api.v3_1_0.OBPAPI3_1_0.Implementations3_1_0
 import code.bankconnectors.{Connector, OBPQueryParam}
 import code.consumer.Consumers
 import code.customer.Customer
-import code.entitlement.Entitlement
 import code.model._
 import code.util.Helper
 import code.views.Views
 import code.webhook.AccountWebHook
 import com.github.dwickern.macros.NameOf.nameOf
-import net.liftweb.common.Box
 import net.liftweb.http.provider.HTTPParam
 import net.liftweb.util.Helpers.tryo
 
@@ -106,21 +104,15 @@ object NewStyle {
   object function {
     import scala.concurrent.ExecutionContext.Implicits.global
 
-    def getBank(bankId : BankId, callContext: Option[CallContext]) : Future[(Bank, Option[CallContext])] = {
-      Connector.connector.vend.getBankFuture(bankId, callContext) map {
+    def getBank(bankId : BankId, callContext: Option[CallContext]) : Future[Bank] = {
+      Connector.connector.vend.getBankFuture(bankId) map {
         unboxFullOrFail(_, callContext, s"$BankNotFound Current BankId is $bankId", 400)
       }
     }
-    def getBanks(callContext: Option[CallContext]) : Future[(List[Bank], Option[CallContext])] = {
-      Connector.connector.vend.getBanksFuture(callContext: Option[CallContext]) map {
+    def getBanks(callContext: Option[CallContext]) : Future[List[Bank]] = {
+      Connector.connector.vend.getBanksFuture() map {
         unboxFullOrFail(_, callContext, ConnectorEmptyResponse, 400)
       }
-    }
-
-    def getBankAccount(bankId : BankId, accountId : AccountId, callContext: Option[CallContext]): Future[(BankAccount, Option[CallContext])] = {
-      Future { BankAccount(bankId, accountId, callContext) } map {
-        x => fullBoxOrException(x ~> APIFailureNewStyle(BankAccountNotFound, 400, callContext.map(_.toLight)))
-      } map { unboxFull(_) }
     }
 
     def checkBankAccountExists(bankId : BankId, accountId : AccountId, callContext: Option[CallContext]) : Future[(BankAccount, Option[CallContext])] = {
@@ -160,14 +152,8 @@ object NewStyle {
 
     def getAdapterInfo(callContext: Option[CallContext]) = {
       Future {
-        Connector.connector.vend.getAdapterInfo(callContext)
+        Connector.connector.vend.getAdapterInfo()
       } map {
-        unboxFullOrFail(_, callContext, ConnectorEmptyResponse, 400)
-      }
-    }
-
-    def getEntitlementsByUserId(userId: String, callContext: Option[CallContext]): Future[List[Entitlement]] = {
-      Entitlement.entitlement.vend.getEntitlementsByUserIdFuture(userId) map {
         unboxFullOrFail(_, callContext, ConnectorEmptyResponse, 400)
       }
     }
@@ -202,18 +188,6 @@ object NewStyle {
       createQueriesByHttpParamsFuture(httpParamsAllowed) map {
         x => fullBoxOrException(x ~> APIFailureNewStyle(InvalidFilterParameterFormat, 400, callContext.map(_.toLight)))
       } map { unboxFull(_) }
-    }
-
-    def hasEntitlement(failMsg: String)(bankId: String, userId: String, role: ApiRole): Future[Box[Unit]] = {
-      Helper.booleanToFuture(failMsg) {
-        code.api.util.APIUtil.hasEntitlement(bankId, userId, role)
-      }
-    }
-
-    def hasAtLeastOneEntitlement(failMsg: String)(bankId: String, userId: String, role: List[ApiRole]): Future[Box[Unit]] = {
-      Helper.booleanToFuture(failMsg) {
-        code.api.util.APIUtil.hasAtLeastOneEntitlement(bankId, userId, role)
-      }
     }
 
   }

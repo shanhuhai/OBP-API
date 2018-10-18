@@ -75,6 +75,9 @@ object KafkaMappedConnector extends Connector with KafkaHelper with MdcLoggable 
   val cachedCounterparty    = TTLCache[KafkaInboundCounterparty](cacheTTL)
   val cachedTransactionRequestTypeCharge = TTLCache[KafkaInboundTransactionRequestTypeCharge](cacheTTL)
 
+  override def getAdapterInfo: Box[InboundAdapterInfoInternal] = Empty
+
+
   //
   // "Versioning" of the messages sent by this or similar connector might work like this:
   // Use Case Classes (e.g. KafkaInbound... KafkaOutbound... as below to describe the message structures.
@@ -112,7 +115,7 @@ object KafkaMappedConnector extends Connector with KafkaHelper with MdcLoggable 
   }
 
   override def updateUserAccountViewsOld( user: ResourceUser ) = {
-    val accounts: List[KafkaInboundAccount] = getBanks(None).map(_._1).openOrThrowException(attemptedToOpenAnEmptyBox).flatMap { bank => {
+    val accounts: List[KafkaInboundAccount] = getBanks.openOrThrowException(attemptedToOpenAnEmptyBox).flatMap { bank => {
       val bankId = bank.bankId.value
       logger.info(s"ObpJvm updateUserAccountViews for user.email ${user.email} user.name ${user.name} at bank ${bankId}")
       for {
@@ -158,7 +161,7 @@ object KafkaMappedConnector extends Connector with KafkaHelper with MdcLoggable 
 
 
   //gets banks handled by this connector
-  override def getBanks(callContext: Option[CallContext]) = {
+  override def getBanks(): Box[List[Bank]] = {
     val req = Map(
       "north" -> "getBanks",
       "version" -> formatVersion,
@@ -185,7 +188,7 @@ object KafkaMappedConnector extends Connector with KafkaHelper with MdcLoggable 
     // Return list of results
 
     logger.debug(s"Kafka getBanks says res is $res")
-    Full(res, callContext)
+    Full(res)
   }
 
   // Gets current challenge level for transaction request
@@ -251,7 +254,7 @@ object KafkaMappedConnector extends Connector with KafkaHelper with MdcLoggable 
     Full(chargeValue)
   }
 
-  override def createChallenge(bankId: BankId, accountId: AccountId, userId: String, transactionRequestType: TransactionRequestType, transactionRequestId: String, callContext: Option[CallContext]) = {
+  override def createChallenge(bankId: BankId, accountId: AccountId, userId: String, transactionRequestType: TransactionRequestType, transactionRequestId: String, callContext: Option[CallContext] = None) = {
     // Create argument list
     val req = Map(
       "north" -> "createChallenge",
@@ -268,7 +271,7 @@ object KafkaMappedConnector extends Connector with KafkaHelper with MdcLoggable 
     // Return result
     r match {
       // Check does the response data match the requested data
-      case Some(x)  => Full(x.challengeId, callContext)
+      case Some(x)  => Full(x.challengeId)
       case _        => Empty
     }
   }
@@ -497,10 +500,10 @@ object KafkaMappedConnector extends Connector with KafkaHelper with MdcLoggable 
   }
 
   // Get one counterparty by the Counterparty Id
-  override def getCounterpartyByCounterpartyId(counterpartyId: CounterpartyId, callContext: Option[CallContext]) = {
+  override def getCounterpartyByCounterpartyId(counterpartyId: CounterpartyId, callContext: Option[CallContext] = None): Box[CounterpartyTrait] = {
 
     if (APIUtil.getPropsAsBoolValue("get_counterparties_from_OBP_DB", true)) {
-      Counterparties.counterparties.vend.getCounterparty(counterpartyId.value).map(counterparty =>(counterparty, callContext))
+      Counterparties.counterparties.vend.getCounterparty(counterpartyId.value)
     } else {
       val req = Map(
         "north" -> "getCounterpartyByCounterpartyId",
@@ -514,7 +517,7 @@ object KafkaMappedConnector extends Connector with KafkaHelper with MdcLoggable 
       val r = {
         cachedCounterparty.getOrElseUpdate( req.toString, () => process(req).extract[KafkaInboundCounterparty])
       }
-      Full(new KafkaCounterparty(r), callContext)
+      Full(new KafkaCounterparty(r))
     }
   }
 
@@ -543,6 +546,11 @@ object KafkaMappedConnector extends Connector with KafkaHelper with MdcLoggable 
 
       Full(new KafkaCounterparty(r))
     }
+  }
+
+  override def getCounterparties(thisBankId: BankId, thisAccountId: AccountId,viewId :ViewId, callContext: Option[CallContext] = None): Box[List[CounterpartyTrait]] = {
+    //note: kafka mode just used the mapper data
+    LocalMappedConnector.getCounterparties(thisBankId, thisAccountId, viewId)
   }
 
   override def createOrUpdatePhysicalCard(bankCardNumber: String,

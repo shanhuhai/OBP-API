@@ -9,16 +9,15 @@ import code.api.util.APIUtil.{saveConnectorMetric, stringOrNull}
 import code.api.util.ErrorMessages._
 import code.api.util.{APIUtil, CallContext, ErrorMessages}
 import code.api.v2_1_0.TransactionRequestCommonBodyJSON
-import code.api.v3_1_0.{CardObjectJson, CheckbookOrdersJson}
+import code.api.v3_1_0.{CardObjectJson, CheckbookOrdersJson, PostCustomerJsonV310}
 import code.atms.Atms.{AtmId, AtmT}
 import code.atms.{Atms, MappedAtm}
 import code.bankconnectors.vJune2017.InboundAccountJune2017
-import code.bankconnectors.vMar2017.InboundAdapterInfoInternal
 import code.branches.Branches._
 import code.branches.MappedBranch
 import code.cards.MappedPhysicalCard
 import code.common.OpeningTimes
-import code.customer.Customer
+import code.customer._
 import code.fx.{FXRate, MappedFXRate, fx}
 import code.management.ImporterAPI.ImporterTransaction
 import code.metadata.comments.Comments
@@ -93,7 +92,7 @@ object LocalMappedConnector extends Connector with MdcLoggable {
     * 5. Send the challenge over an separate communication channel.
     */
   // Now, move this method to `code.transactionChallenge.MappedExpectedChallengeAnswerProvider.validateChallengeAnswerInOBPSide`
-  override def createChallenge(bankId: BankId, accountId: AccountId, userId: String, transactionRequestType: TransactionRequestType, transactionRequestId: String, callContext: Option[CallContext]) = {
+  override def createChallenge(bankId: BankId, accountId: AccountId, userId: String, transactionRequestType: TransactionRequestType, transactionRequestId: String, callContext: Option[CallContext] = None) = {
 //    val challengeId = UUID.randomUUID().toString
 //    val challenge = StringHelpers.randomString(6)
 //    // Random string. For instance: EONXOA
@@ -104,7 +103,7 @@ object LocalMappedConnector extends Connector with MdcLoggable {
 //    // TODO Send challenge to the user over an separate communication channel
 //    //Return id of challenge
 //    Full(challengeId)
-    Full("123", callContext)
+    Full("123")
   }
 
   /**
@@ -158,12 +157,12 @@ object LocalMappedConnector extends Connector with MdcLoggable {
               .mBankRoutingAddress(APIUtil.ValueOrOBPId(bank.bankRoutingAddress,bank.bankId.value))
       )
 
-  override def getBankFuture(bankId : BankId, callContext: Option[CallContext]) = Future {
-    getBank(bankId).map(bank =>(bank,callContext))
+  override def getBankFuture(bankId : BankId) : Future[Box[Bank]]= Future {
+    getBank(bankId)
   }
   
   //gets banks handled by this connector
-  override def getBanks(callContext: Option[CallContext]) = saveConnectorMetric {
+  override def getBanks(): Box[List[Bank]] = saveConnectorMetric {
      Full(MappedBank
         .findAll()
         .map(
@@ -171,13 +170,12 @@ object LocalMappedConnector extends Connector with MdcLoggable {
              bank
                .mBankRoutingScheme(APIUtil.ValueOrOBP(bank.bankRoutingScheme))
                .mBankRoutingAddress(APIUtil.ValueOrOBPId(bank.bankRoutingAddress, bank.bankId.value))
-        ),
-       callContext
+        )
      )
   }("getBanks")
 
-  override def getBanksFuture(callContext: Option[CallContext]) = Future {
-    getBanks(callContext)
+  override def getBanksFuture(): Future[Box[List[Bank]]] = Future {
+    getBanks()
   }
 
 
@@ -478,12 +476,13 @@ object LocalMappedConnector extends Connector with MdcLoggable {
     }
   }
   
-  override def getCounterpartyTrait(bankId: BankId, accountId: AccountId, counterpartyId: String, callContext: Option[CallContext])= {
-    getCounterpartyByCounterpartyId(CounterpartyId(counterpartyId), callContext)
+  //Note: in local mapped database, we have the unique constraint counterparty Id, so just call `getCounterpartyByCounterpartyId` is enough.
+  override def getCounterpartyTrait(bankId: BankId, accountId: AccountId, counterpartyId: String, callContext: Option[CallContext] = None): Box[CounterpartyTrait]= {
+    getCounterpartyByCounterpartyId(CounterpartyId(counterpartyId))
   }
   
-  override def getCounterpartyByCounterpartyId(counterpartyId: CounterpartyId, callContext: Option[CallContext]) ={
-    Counterparties.counterparties.vend.getCounterparty(counterpartyId.value).map(counterparty => (counterparty, callContext))
+  override def getCounterpartyByCounterpartyId(counterpartyId: CounterpartyId, callContext: Option[CallContext] = None): Box[CounterpartyTrait] ={
+    Counterparties.counterparties.vend.getCounterparty(counterpartyId.value)
   }
 
   override def getCounterpartyByIban(iban: String): Box[CounterpartyTrait] ={
@@ -1512,15 +1511,15 @@ object LocalMappedConnector extends Connector with MdcLoggable {
     )
   }
 
-  override def getBranchesFuture(bankId: BankId, callContext: Option[CallContext], queryParams: OBPQueryParam*) = {
+  override def getBranchesFuture(bankId: BankId, queryParams: OBPQueryParam*): Future[Box[List[MappedBranch]]] = {
     Future {
-      Full(MappedBranch.findAll(By(MappedBranch.mBankId, bankId.value)), callContext)
+      Full(MappedBranch.findAll(By(MappedBranch.mBankId, bankId.value)))
     }
   }
 
-  override def getBranchFuture(bankId : BankId, branchId: BranchId, callContext: Option[CallContext]) = {
+  override def getBranchFuture(bankId : BankId, branchId: BranchId) : Future[Box[MappedBranch]]= {
     Future {
-      getBranch(bankId, branchId).map(branch=>(branch, callContext))
+      getBranch(bankId, branchId)
     }
   }
 
@@ -1530,14 +1529,15 @@ object LocalMappedConnector extends Connector with MdcLoggable {
         By(MappedAtm.mBankId, bankId.value),
         By(MappedAtm.mAtmId, atmId.value))
   }
-  override def getAtmFuture(bankId : BankId, atmId: AtmId, callContext: Option[CallContext]) = 
+  override def getAtmFuture(bankId : BankId, atmId: AtmId) : Future[Box[MappedAtm]]= {
     Future {
-      getAtm(bankId, atmId).map(atm =>(atm, callContext))
+      getAtm(bankId, atmId)
     }
+  }
 
-  override def getAtmsFuture(bankId: BankId, callContext: Option[CallContext], queryParams: OBPQueryParam*)= {
+  override def getAtmsFuture(bankId: BankId, queryParams: OBPQueryParam*): Future[Box[List[MappedAtm]]] = {
     Future {
-      Full(MappedAtm.findAll(By(MappedAtm.mBankId, bankId.value)),callContext)
+      Full(MappedAtm.findAll(By(MappedAtm.mBankId, bankId.value)))
     }
   }
 
@@ -1635,8 +1635,8 @@ object LocalMappedConnector extends Connector with MdcLoggable {
     Full(transactionRequestTypeCharge)
   }
 
-  override def getCounterparties(thisBankId: BankId, thisAccountId: AccountId, viewId: ViewId, callContext: Option[CallContext] = None) = {
-    Counterparties.counterparties.vend.getCounterparties(thisBankId, thisAccountId, viewId).map(counterparties =>(counterparties, callContext))
+  override def getCounterparties(thisBankId: BankId, thisAccountId: AccountId, viewId: ViewId, callContext: Option[CallContext] = None): Box[List[CounterpartyTrait]] = {
+    Counterparties.counterparties.vend.getCounterparties(thisBankId, thisAccountId, viewId)
   }
 
   override def createOrUpdateBank(
@@ -1699,7 +1699,7 @@ object LocalMappedConnector extends Connector with MdcLoggable {
     otherBranchRoutingAddress: String,
     isBeneficiary:Boolean,
     bespoke: List[CounterpartyBespoke],
-    callContext: Option[CallContext] = None): Box[(CounterpartyTrait, Option[CallContext])] =
+    callContext: Option[CallContext] = None): Box[CounterpartyTrait] =
     Counterparties.counterparties.vend.createCounterparty(
       createdByUserId = createdByUserId,
       thisBankId = thisBankId,
@@ -1717,8 +1717,58 @@ object LocalMappedConnector extends Connector with MdcLoggable {
       otherAccountSecondaryRoutingAddress = otherAccountSecondaryRoutingAddress,
       description = description,
       bespoke = bespoke
-    ).map(counterparty => (counterparty, callContext))
+    )
+
+  override def checkCustomerNumberAvailableFuture(
+    bankId: BankId,
+    customerNumber: String
+  ) = Future{tryo {Customer.customerProvider.vend.checkCustomerNumberAvailable(bankId, customerNumber)} }
   
+  
+  override def createCustomerFuture(
+                               bankId: BankId,
+                               number: String,
+                               legalName: String,
+                               mobileNumber: String,
+                               email: String,
+                               faceImage:
+                               CustomerFaceImageTrait,
+                               dateOfBirth: Date,
+                               relationshipStatus: String,
+                               dependents: Int,
+                               dobOfDependents: List[Date],
+                               highestEducationAttained: String,
+                               employmentStatus: String,
+                               kycStatus: Boolean,
+                               lastOkDate: Date,
+                               creditRating: Option[CreditRatingTrait],
+                               creditLimit: Option[AmountOfMoneyTrait],
+                               callContext: Option[CallContext] = None,
+                               title: String,
+                               branchId: String,
+                               nameSuffix: String): Future[Box[Customer]] = Future{
+    Customer.customerProvider.vend.addCustomer(
+      bankId,
+      number,
+      legalName,
+      mobileNumber,
+      email,
+      faceImage,
+      dateOfBirth,
+      relationshipStatus,
+      dependents,
+      dobOfDependents,
+      highestEducationAttained,
+      employmentStatus,
+      kycStatus,
+      lastOkDate,
+      creditRating,
+      creditLimit,
+      title,
+      branchId,
+      nameSuffix
+    )
+  }
   
   override def getCustomersByUserIdFuture(userId: String, callContext: Option[CallContext]): Future[Box[(List[Customer],Option[CallContext])]]=
     Customer.customerProvider.vend.getCustomersByUserIdFuture(userId) map {
@@ -1732,8 +1782,9 @@ object LocalMappedConnector extends Connector with MdcLoggable {
     bankId: String, 
     accountId: String, 
     callContext: Option[CallContext]
-  ) = Future {
-    Full(SwaggerDefinitionsJSON.checkbookOrdersJson, callContext)
+  ): Future[Box[CheckbookOrdersJson]] = Future
+  {
+    Full(SwaggerDefinitionsJSON.checkbookOrdersJson)
   }
   
   
@@ -1741,9 +1792,9 @@ object LocalMappedConnector extends Connector with MdcLoggable {
     bankId: String, 
     accountId: String, 
     callContext: Option[CallContext]
-  ) = Future
+  ): Future[Box[List[CardObjectJson]]] = Future
   {
-    Full(List(SwaggerDefinitionsJSON.cardObjectJson), callContext)
+    Full(List(SwaggerDefinitionsJSON.cardObjectJson))
   }
   
 }

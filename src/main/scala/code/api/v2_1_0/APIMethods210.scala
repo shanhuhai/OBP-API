@@ -448,7 +448,7 @@ trait APIMethods210 {
                   //For COUNTERPARTY, Use the counterpartyId to find the toCounterparty and set up the toAccount
                   transactionRequestBodyCounterparty <- tryo {json.extract[TransactionRequestBodyCounterpartyJSON]} ?~! s"${InvalidJsonFormat}, it should be COUNTERPARTY input format"
                   toCounterpartyId <- Full(transactionRequestBodyCounterparty.to.counterparty_id)
-                  (toCounterparty, callContext) <- Connector.connector.vend.getCounterpartyByCounterpartyId(CounterpartyId(toCounterpartyId), Some(cc)) ?~! {CounterpartyNotFoundByCounterpartyId}
+                  toCounterparty <- Connector.connector.vend.getCounterpartyByCounterpartyId(CounterpartyId(toCounterpartyId), Some(cc)) ?~! {CounterpartyNotFoundByCounterpartyId}
                   toAccount <- BankAccount.toBankAccount(toCounterparty)
                   // Check we can send money to it.
                   _ <- booleanToBox(toCounterparty.isBeneficiary == true, CounterpartyBeneficiaryPermit)
@@ -675,7 +675,7 @@ trait APIMethods210 {
               view <- Views.views.vend.view(viewId, BankIdAccountId(fromAccount.bankId, fromAccount.accountId))
               _ <- booleanToBox(u.hasViewAccess(view), UserNoPermissionAccessView)
               _ <- booleanToBox(u.hasOwnerViewAccess(BankIdAccountId(fromAccount.bankId,fromAccount.accountId)), UserNoOwnerView)
-              (transactionRequests,callContext) <- Connector.connector.vend.getTransactionRequests210(u, fromAccount, Some(cc))
+              transactionRequests <- Connector.connector.vend.getTransactionRequests210(u, fromAccount, Some(cc))
             }
               yield {
                 // Format the data as V2.0.0 json
@@ -1334,7 +1334,10 @@ trait APIMethods210 {
               postedData.kyc_status,
               postedData.last_ok_date,
               Option(CreditRating(postedData.credit_rating.rating, postedData.credit_rating.source)),
-              Option(CreditLimit(postedData.credit_limit.currency, postedData.credit_limit.amount))) ?~! CreateConsumerError
+              Option(CreditLimit(postedData.credit_limit.currency, postedData.credit_limit.amount)),
+              "",
+              "",
+              "") ?~! CreateConsumerError
             _ <- booleanToBox(UserCustomerLink.userCustomerLink.vend.getUserCustomerLink(user_id, customer.customerId).isEmpty == true) ?~! CustomerAlreadyExistsForUser
             _ <- UserCustomerLink.userCustomerLink.vend.createUserCustomerLink(user_id, customer.customerId, new Date(), true) ?~! CreateUserCustomerLinksError
             _ <- Connector.connector.vend.UpdateUserAccoutViewsByUsername(customer_user.name)

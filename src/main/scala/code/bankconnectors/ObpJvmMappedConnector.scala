@@ -111,6 +111,8 @@ object ObpJvmMappedConnector extends Connector with MdcLoggable {
   val getCounterpartyFromTransactionTTL     = APIUtil.getPropsValue("connector.cache.ttl.seconds.getCounterpartyFromTransaction", "0").toInt * 1000 // Miliseconds
   val getCounterpartiesFromTransactionTTL   = APIUtil.getPropsValue("connector.cache.ttl.seconds.getCounterpartiesFromTransaction", "0").toInt * 1000 // Miliseconds
 
+  override def getAdapterInfo: Box[InboundAdapterInfoInternal] = Empty
+  
   override def getUser( username: String, password: String ): Box[InboundUser] = {
     val parameters = new JHashMap
     parameters.put("username", username)
@@ -127,7 +129,7 @@ object ObpJvmMappedConnector extends Connector with MdcLoggable {
 
   override def updateUserAccountViewsOld( user: ResourceUser ) = {
 
-    val accounts = getBanks(None).map(_._1).openOrThrowException(ErrorMessages.attemptedToOpenAnEmptyBox).flatMap { bank => {
+    val accounts = getBanks.openOrThrowException(ErrorMessages.attemptedToOpenAnEmptyBox).flatMap { bank => {
       val bankId = bank.bankId.value
       logger.debug(s"ObpJvm updateUserAccountViews for user.email ${user.email} user.name ${user.name} at bank ${bankId}")
       val parameters = new JHashMap
@@ -182,7 +184,7 @@ object ObpJvmMappedConnector extends Connector with MdcLoggable {
 
 
   //gets banks handled by this connector
-  override def getBanks(callContext: Option[CallContext])= memoizeSync(getBanksTTL millisecond) {
+  override def getBanks(): Box[List[Bank]] = memoizeSync(getBanksTTL millisecond) {
     val response = jvmNorth.get("getBanks", Transport.Target.banks, null)
 
     // todo response.error().isPresent
@@ -200,7 +202,7 @@ object ObpJvmMappedConnector extends Connector with MdcLoggable {
 
     logger.debug(s"ObpJvm getBanks says res is $banks")
     // Return list of results
-    Full(banks, callContext)
+    Full(banks)
   }
 
   // Gets current challenge level for transaction request
@@ -239,7 +241,7 @@ object ObpJvmMappedConnector extends Connector with MdcLoggable {
     LocalMappedConnector.getChargeLevel(bankId: BankId, accountId: AccountId, viewId: ViewId, userId: String, userName: String,
                                         transactionRequestType: String, currency: String)
   }
-  override def createChallenge(bankId: BankId, accountId: AccountId, userId: String, transactionRequestType: TransactionRequestType, transactionRequestId: String, callContext: Option[CallContext]) =
+  override def createChallenge(bankId: BankId, accountId: AccountId, userId: String, transactionRequestType: TransactionRequestType, transactionRequestId: String, callContext: Option[CallContext] = None) =
     LocalMappedConnector.createChallenge(bankId: BankId, accountId: AccountId, userId: String, transactionRequestType: TransactionRequestType, transactionRequestId: String)
   override def validateChallengeAnswer(challengeId: String, hashOfSuppliedAnswer: String): Box[Boolean] =
     LocalMappedConnector.validateChallengeAnswer(challengeId: String, hashOfSuppliedAnswer: String)
@@ -542,6 +544,9 @@ object ObpJvmMappedConnector extends Connector with MdcLoggable {
   */
 
   
+  override def getCounterpartyByCounterpartyId(counterpartyId: CounterpartyId, callContext: Option[CallContext] = None): Box[CounterpartyTrait] =
+    LocalMappedConnector.getCounterpartyByCounterpartyId(counterpartyId: CounterpartyId)
+
   override def getCounterpartyByIban(iban: String): Box[CounterpartyTrait] =
     LocalMappedConnector.getCounterpartyByIban(iban: String)
 
@@ -1379,6 +1384,11 @@ object ObpJvmMappedConnector extends Connector with MdcLoggable {
     }
 
     transactionRequestTypeCharge
+  }
+
+  override def getCounterparties(thisBankId: BankId, thisAccountId: AccountId,viewId :ViewId, callContext: Option[CallContext] = None): Box[List[CounterpartyTrait]] =
+  {
+    LocalMappedConnector.getCounterparties(thisBankId: BankId, thisAccountId: AccountId,viewId :ViewId)
   }
 
   override def getEmptyBankAccount(): Box[BankAccount] = {

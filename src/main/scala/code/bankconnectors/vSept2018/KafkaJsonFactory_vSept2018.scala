@@ -7,6 +7,7 @@ import code.api.util.APIUtil.InboundMessageBase
 import code.api.v3_1_0.CheckbookOrdersJson
 import code.atms.Atms.{AtmId, AtmT}
 import code.bankconnectors._
+import code.bankconnectors.vJune2017.InternalCustomer
 import code.bankconnectors.vMar2017._
 import code.branches.Branches._
 import code.common.{Address, Location, Meta, Routing}
@@ -28,7 +29,7 @@ case class OutboundGetAdapterInfo(date: String) extends TopicTrait
 case class OutboundGetBanks(authInfo: AuthInfo) extends TopicTrait
 case class OutboundGetBank(authInfo: AuthInfo, bankId: String) extends TopicTrait
 case class OutboundGetUserByUsernamePassword(authInfo: AuthInfo, password: String) extends TopicTrait
-case class OutboundGetAccounts(authInfo: AuthInfo, callCBSFlag: Boolean, customers:InternalBasicCustomers) extends TopicTrait
+case class OutboundGetAccounts(authInfo: AuthInfo, customers:InternalBasicCustomers) extends TopicTrait
 case class OutboundGetAccountbyAccountID(authInfo: AuthInfo, bankId: String, accountId: String)extends TopicTrait
 case class OutboundCheckBankAccountExists(authInfo: AuthInfo, bankId: String, accountId: String)extends TopicTrait
 case class OutboundGetCoreBankAccounts(authInfo: AuthInfo, bankIdAccountIds: List[BankIdAccountId])extends TopicTrait
@@ -313,8 +314,6 @@ case class InternalCounterparty(
                                  otherAccountSecondaryRoutingAddress: String,
                                  bespoke: List[CounterpartyBespoke]) extends CounterpartyTrait
 
-
-case class InternalCustomer(customerId: String, bankId: String, number: String, legalName: String, mobileNumber: String, email: String, faceImage: CustomerFaceImage, dateOfBirth: Date, relationshipStatus: String, dependents: Integer, dobOfDependents: List[Date], highestEducationAttained: String, employmentStatus: String, creditRating: CreditRating, creditLimit: CreditLimit, kycStatus: lang.Boolean, lastOkDate: Date) extends Customer
 
 case class  InboundBranchVSept2018(
                            branchId: BranchId,

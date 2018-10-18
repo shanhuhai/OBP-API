@@ -51,7 +51,7 @@ import scala.concurrent.Future
 
 
 object JSONFactoryGateway {
-  //Never update these values inside the case class
+
   case class PayloadOfJwtJSON(
                                login_user_name: String,
                                is_first: Boolean,
@@ -170,10 +170,10 @@ object GatewayLogin extends RestHelper with MdcLoggable {
     
     if(APIUtil.isFirst(isFirst)) // Case is_first="true"
     { 
-      //if isFirst = true, we create new sessionId for CallContext
-      val callContextNewSessionId = ApiSession.createSessionId(callContextForRequest)
+      //We update the sessionid only once, and only when is_first = true. 
+      val callContextUpdatedSessionId = APIUtil.updateCallContextSessionId(callContextForRequest)
       // Call CBS, Note, this is the first time to call Adapter in GatewayLogin process
-      val res = Connector.connector.vend.getBankAccounts(username, callContextNewSessionId) // Box[List[InboundAccountJune2017]]//
+      val res = Connector.connector.vend.getBankAccounts(username, callContextUpdatedSessionId) // Box[List[InboundAccountJune2017]]//
       res match {
         case Full((l, callContextReturn))=>
           Full(compactRender(Extraction.decompose(l)),l, callContextReturn) // case class --> JValue --> Json string
@@ -183,9 +183,7 @@ object GatewayLogin extends RestHelper with MdcLoggable {
           Failure(msg, t, c)
       }
     } else { // Do not call CBS
-      //if isFirst = false, we set the sessionId from the GateWayLogin.gatewayLoginRequestPayload
-      val callContextUpdatedSessionId = ApiSession.updateSessionId(callContextForRequest)
-      Full(ErrorMessages.GatewayLoginNoNeedToCallCbs, Nil, callContextUpdatedSessionId)
+      Full(ErrorMessages.GatewayLoginNoNeedToCallCbs, Nil, callContextForRequest)
     }
   }
 
@@ -203,7 +201,7 @@ object GatewayLogin extends RestHelper with MdcLoggable {
     if(APIUtil.isFirst(isFirst)) // Case is_first="true"
     { 
       //We update the sessionId only once, and only when is_first = true. 
-      val callContextUpdatedSessionId = ApiSession.createSessionId(callContextForRequest)
+      val callContextUpdatedSessionId = APIUtil.updateCallContextSessionId(callContextForRequest)
 
       // Call CBS
       val res = Connector.connector.vend.getBankAccountsFuture(username, callContextUpdatedSessionId) // Box[List[InboundAccountJune2017]]//
@@ -217,8 +215,7 @@ object GatewayLogin extends RestHelper with MdcLoggable {
       }
     } else { // Do not call CBS
       Future {
-        val callContextUpdatedSessionId = ApiSession.updateSessionId(callContextForRequest)
-        Full((ErrorMessages.GatewayLoginNoNeedToCallCbs, Nil, callContextUpdatedSessionId))
+        Full((ErrorMessages.GatewayLoginNoNeedToCallCbs, Nil, callContextForRequest))
       }
     }
   }

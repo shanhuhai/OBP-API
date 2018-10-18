@@ -225,6 +225,8 @@ object Bank {
     Connector.connector.vend.getBank(bankId)
   }
 
+  def all(): Box[List[Bank]] = Connector.connector.vend.getBanks
+
   @deprecated(Helper.deprecatedJsonGenerationMessage)
   def toJson(banks: Seq[Bank]) : JArray =
     banks.map(bank => bank.toJson)
@@ -512,12 +514,9 @@ trait BankAccount extends MdcLoggable {
     }
   }
 
-  final def moderatedTransaction(transactionId: TransactionId, view: View, user: Box[User], callContext: Option[CallContext] = None) : Box[(ModeratedTransaction, Option[CallContext])] = {
+  final def moderatedTransaction(transactionId: TransactionId, view: View, user: Box[User], callContext: Option[CallContext] = None) : Box[ModeratedTransaction] = {
     if(APIUtil.hasAccess(view, user))
-      for{
-       (transaction, callContext)<-Connector.connector.vend.getTransaction(bankId, accountId, transactionId, callContext)
-        moderatedTransaction<- view.moderateTransaction(transaction)
-      } yield (moderatedTransaction, callContext)
+      Connector.connector.vend.getTransaction(bankId, accountId, transactionId, callContext).map(_._1).flatMap(view.moderateTransaction)
     else
       viewNotAllowed(view)
   }
@@ -567,7 +566,7 @@ trait BankAccount extends MdcLoggable {
       val implicitModeratedOtherBankAccounts = Connector.connector.vend.getCounterpartiesFromTransaction(bankId, accountId).openOrThrowException(attemptedToOpenAnEmptyBox).map(oAcc => view.moderateOtherAccount(oAcc)).flatten
       val explictCounterpartiesBox = Connector.connector.vend.getCounterparties(view.bankId, view.accountId, view.viewId)
       explictCounterpartiesBox match {
-        case Full((counterparties, callContext))=> {
+        case Full(counterparties) => {
           val explictModeratedOtherBankAccounts: List[ModeratedOtherBankAccount] = counterparties.flatMap(BankAccount.toInternalCounterparty).flatMap(counterparty=>view.moderateOtherAccount(counterparty))
           Full(explictModeratedOtherBankAccounts ++ implicitModeratedOtherBankAccounts)
         }
@@ -585,7 +584,7 @@ trait BankAccount extends MdcLoggable {
   */
   final def moderatedOtherBankAccount(counterpartyID : String, view : View, user : Box[User]) : Box[ModeratedOtherBankAccount] =
     if(APIUtil.hasAccess(view, user))
-      Connector.connector.vend.getCounterpartyByCounterpartyId(CounterpartyId(counterpartyID), None).map(_._1).flatMap(BankAccount.toInternalCounterparty).flatMap(view.moderateOtherAccount) match {
+      Connector.connector.vend.getCounterpartyByCounterpartyId(CounterpartyId(counterpartyID)).flatMap(BankAccount.toInternalCounterparty).flatMap(view.moderateOtherAccount) match {
         //First check the explict counterparty 
         case Full(moderatedOtherBankAccount) => Full(moderatedOtherBankAccount)
         //Than we checked the implict counterparty.  

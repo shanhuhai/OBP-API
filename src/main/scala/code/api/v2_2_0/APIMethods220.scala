@@ -246,7 +246,7 @@ trait APIMethods220 {
         cc =>
           for {
             (_, callContext) <-  extractCallContext(UserNotLoggedIn, cc)
-            (_, callContext) <- NewStyle.function.getBank(bankId, callContext)
+            _ <- NewStyle.function.getBank(bankId, callContext)
             _ <- NewStyle.function.tryons(failMsg = InvalidISOCurrencyCode,400, callContext) {
               assert(isValidCurrencyISOCode(fromCurrencyCode))
             }
@@ -297,7 +297,7 @@ trait APIMethods220 {
             view <- Views.views.vend.view(viewId, BankIdAccountId(account.bankId, account.accountId))
             _ <- booleanToBox(view.canAddCounterparty == true, s"${NoViewPermission}canAddCounterparty")
             _ <- booleanToBox(u.hasViewAccess(view), UserNoPermissionAccessView)
-            (counterparties, callContext)  <- Connector.connector.vend.getCounterparties(bankId,accountId,viewId, Some(cc))
+            counterparties <- Connector.connector.vend.getCounterparties(bankId,accountId,viewId, Some(cc))
             //Here we need create the metadata for all the explicit counterparties. maybe show them in json response.  
             //Note: actually we need update all the counterparty metadata when they from adapter. Some counterparties may be the first time to api, there is no metadata.
             _ <- tryo {for{counterparty <-counterparties}Counterparties.counterparties.vend.getOrCreateMetadata(bankId, accountId, counterparty.counterpartyId, counterparty.name)} ?~! CreateOrUpdateCounterpartyMetadataError 
@@ -337,9 +337,9 @@ trait APIMethods220 {
             _ <- booleanToBox(view.canAddCounterparty == true, s"${NoViewPermission}canAddCounterparty")
             _ <- booleanToBox(u.hasViewAccess(view), UserNoPermissionAccessView)
             counterpartyMetadata <- Counterparties.counterparties.vend.getMetadata(bankId, accountId, counterpartyId.value) ?~! CounterpartyMetadataNotFound
-            (counterparty, callContext) <- Connector.connector.vend.getCounterpartyTrait(bankId, accountId, counterpartyId.value, Some(cc))
+            counterparty <- Connector.connector.vend.getCounterpartyTrait(bankId, accountId, counterpartyId.value, Some(cc))
           } yield {
-            val counterpartyJson = JSONFactory220.createCounterpartyWithMetadataJSON(counterparty, counterpartyMetadata)
+            val counterpartyJson = JSONFactory220.createCounterpartyWithMetadataJSON(counterparty,counterpartyMetadata)
             successJsonResponse(Extraction.decompose(counterpartyJson))
           }
       }
@@ -1062,7 +1062,7 @@ trait APIMethods220 {
             else
               Full()
               
-            (counterparty, callConext) <- Connector.connector.vend.createCounterparty(
+            counterparty <- Connector.connector.vend.createCounterparty(
               name=postJson.name,
               description=postJson.description,
               createdByUserId=u.userId,

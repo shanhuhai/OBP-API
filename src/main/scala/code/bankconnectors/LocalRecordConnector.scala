@@ -35,6 +35,8 @@ private object LocalRecordConnector extends Connector with MdcLoggable {
 
   implicit override val nameOfConnector = LocalRecordConnector.getClass.getSimpleName
 
+  override def getAdapterInfo: Box[InboundAdapterInfoInternal] = Empty
+
   // Gets current challenge level for transaction request
   override def getChallengeThreshold(bankId: String, accountId: String, viewId: String, transactionRequestType: String, currency: String, userId: String, userName: String) = {
     val limit = BigDecimal("50")
@@ -58,8 +60,8 @@ private object LocalRecordConnector extends Connector with MdcLoggable {
     getHostedBank(bankId)
 
   //gets banks handled by this connector
-  override def getBanks(callContext: Option[CallContext]) =
-    Full(HostedBank.findAll, callContext)
+  override def getBanks(): Box[List[Bank]] =
+    Full(HostedBank.findAll)
 
   override def getBankAccount(bankId : BankId, accountId : AccountId, callContext: Option[CallContext]) : Box[(BankAccount, Option[CallContext])] = {
     for{
@@ -130,6 +132,8 @@ private object LocalRecordConnector extends Connector with MdcLoggable {
       createOtherBankAccount(bankId, accountId, meta, otherAccountFromTransaction)
     }))
   }
+
+  override def getCounterpartyByIban(iban: String): Box[CounterpartyTrait] = Empty
 
   override def getTransactions(bankId: BankId, accountId: AccountId, callContext: Option[CallContext], queryParams: OBPQueryParam*) = {
     logger.debug("getTransactions for " + bankId + "/" + accountId)
@@ -343,6 +347,24 @@ private object LocalRecordConnector extends Connector with MdcLoggable {
       }
     }
   }
+
+  override def getTransactionRequestStatusesImpl() :  Box[TransactionRequestStatus] = Empty
+  /*
+   Transaction Requests
+ */
+
+  override def createTransactionRequestImpl(transactionRequestId: TransactionRequestId, transactionRequestType: TransactionRequestType,
+                                            account : BankAccount, counterparty : BankAccount, body: TransactionRequestBody,
+                                            status: String, charge: TransactionRequestCharge) : Box[TransactionRequest] = ???
+
+
+  override def saveTransactionRequestTransactionImpl(transactionRequestId: TransactionRequestId, transactionId: TransactionId) = ???
+  override def saveTransactionRequestChallengeImpl(transactionRequestId: TransactionRequestId, challenge: TransactionRequestChallenge) = ???
+  override def getTransactionRequestsImpl(fromAccount : BankAccount) : Box[List[TransactionRequest]] = ???
+  override def getTransactionRequestsImpl210(fromAccount : BankAccount) : Box[List[TransactionRequest]] = ???
+  override def getTransactionRequestImpl(transactionRequestId: TransactionRequestId) : Box[TransactionRequest] = ???
+  override def saveTransactionRequestStatusImpl(transactionRequestId: TransactionRequestId, status: String) = ???
+
 
 
   private def createOtherBankAccount(originalPartyBankId: BankId, originalPartyAccountId: AccountId,
@@ -585,5 +607,31 @@ private object LocalRecordConnector extends Connector with MdcLoggable {
         Full(false)
     }
   }
+
+  override def getProducts(bankId: BankId): Box[List[Product]] = Empty
+
+  override def getProduct(bankId: BankId, productCode: ProductCode): Box[Product] = Empty
+
+  override def createOrUpdateBranch(branch: Branch): Box[BranchT] = Empty
+  
+  override def getCurrentFxRate(bankId: BankId, fromCurrencyCode: String, toCurrencyCode: String): Box[FXRate] = Empty
+  
+  override def getTransactionRequestTypeCharge(bankId: BankId, accountId: AccountId, viewId: ViewId, transactionRequestType: TransactionRequestType): Box[TransactionRequestTypeCharge] = Empty
+
+  override def getCounterparties(thisBankId: BankId, thisAccountId: AccountId,viewId :ViewId, callContext: Option[CallContext] = None): Box[List[CounterpartyTrait]] = Empty
+
+  override def getEmptyBankAccount(): Box[BankAccount] = Empty
+  
+  override def createOrUpdateBank(
+    bankId: String,
+    fullBankName: String,
+    shortBankName: String,
+    logoURL: String,
+    websiteURL: String,
+    swiftBIC: String,
+    national_identifier: String,
+    bankRoutingScheme: String,
+    bankRoutingAddress: String
+  ): Box[Bank] = Empty
 
 }
